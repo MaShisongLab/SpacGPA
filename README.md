@@ -23,13 +23,13 @@ SpacGPA is described in the preprint “[SpacGPA: annotating spatial transcripto
 
 **Before installation, Download the full repository** via clone `https://github.com/MaShisongLab/SpacGPA.git` and `cd` into it, or click **Code → Download ZIP** and unzip.
 
-1) Create the environment
+1) Create the environment  
 **cd SpacGPA-main**  
 **conda env create -f environment.yml**  
 **conda activate SpacGPA**  
 
 2) Install SpacGPA (from the repository root)  
-**pip install -e .**
+**pip install -e .**  
 **conda deactivate**  
 
 **Note:** If you prefer a different CUDA/toolkit, edit the PyTorch lines in environment.yml
