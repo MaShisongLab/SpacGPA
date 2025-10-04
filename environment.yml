@@ -13,7 +13,7 @@ dependencies:
   - scipy
   - pandas
   - anndata
-  - scanpy
+  - scanpy=1.9.3
   - matplotlib
   - seaborn
   - statsmodels
