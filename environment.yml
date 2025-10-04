@@ -1,0 +1,39 @@
+name: SpacGPA
+channels:
+  - conda-forge
+  - bioconda
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.8
+  - pip
+
+  # Core scientific stack (from actual imports)
+  - numpy
+  - scipy
+  - pandas
+  - anndata
+  - scanpy
+  - matplotlib
+  - seaborn
+  - statsmodels
+  - scikit-learn
+  - h5py
+
+  # Graph & clustering
+  - networkx
+  - python-igraph
+  - leidenalg
+  - python-louvain
+
+  # Annotation utilities
+  - mygene
+
+  # External binary for original MCL
+  - mcl
+
+  # PyTorch (GPU, CUDA 11.8). Edit these lines to match your GPU/driver, or switch to CPU builds.
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.8

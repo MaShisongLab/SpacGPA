@@ -277,6 +277,7 @@ def calculate_pcors_pytorch(x, round_num, selected_num, gene_name, project_name,
         torch.manual_seed(seed)
 
         # Step 3: Iteratively compute partial correlations
+        t0 = time.time()
         for i in range(round_num):
             loop_start_t = time.time()
             j = torch.randperm(ncol, device="cpu")[:selected_num]  # Random sampling on CPU
@@ -322,11 +323,11 @@ def calculate_pcors_pytorch(x, round_num, selected_num, gene_name, project_name,
             time_trend[i % 100] = loop_time
             average_loop_time = time_trend[:min(i + 1, 100)].mean().item()
             time_left = (round_num - i - 1) * average_loop_time / 60
+            elapsed_min = (time.time() - t0) / 60.0
             sys.stdout.write(f"\rIteration: {i + 1}/{round_num}, "
-                  f"Updated gene pairs: {updated_elements_count}, "
-                  f"Removed gene pairs: {valid_elements_count}, "
                   f"Avg loop time: {average_loop_time:.4f} s, "
-                  f"Estimated time left: {time_left:.2f} min. "
+                  f"Elapsed time: {elapsed_min:.2f} min, "
+                  f"Estimated time left: {time_left:.2f} min.                  "
                   )
             sys.stdout.flush()
 
@@ -457,36 +458,36 @@ def estimate_rounds(gene_num, selected_num, target_sampling_count):
 ############################################################################################################
 # Old functions
 # set_selects_v1
-def set_selects_v1(gene_num):
-    """
-    Automatically determine selected_num based on the total number of genes (gene_num)
+# def set_selects_v1(gene_num):
+#     """
+#     Automatically determine selected_num based on the total number of genes (gene_num)
 
-    Parameters:
-        gene_num (int): Total number of genes in the input dataset (must be greater than 0).
+#     Parameters:
+#         gene_num (int): Total number of genes in the input dataset (must be greater than 0).
         
-    Returns:
-        selected_num (int): The number of genes selected in each iteration to calculate the partial correlation coefficient
+#     Returns:
+#         selected_num (int): The number of genes selected in each iteration to calculate the partial correlation coefficient
                          
-    Conditions (in strict order):
-        1. If gene_num is less than 500, use all genes and set target_sampling_count to 1.
-        2. If gene_num is in the range [500, 5000), set selected_num = 500 and use the user-specified target_sampling_count.
-        3. If gene_num is in the range [5000, 20000] (inclusive), set selected_num to ceil(gene_num / 10) and use the user-specified target_sampling_count.
-        4. If gene_num is greater than 20000, set selected_num = 2000 and use the user-specified target_sampling_count.
-    """
-    if gene_num <= 0:
-        raise ValueError("gene_num must be greater than 0.")
+#     Conditions (in strict order):
+#         1. If gene_num is less than 500, use all genes and set target_sampling_count to 1.
+#         2. If gene_num is in the range [500, 5000), set selected_num = 500 and use the user-specified target_sampling_count.
+#         3. If gene_num is in the range [5000, 20000] (inclusive), set selected_num to ceil(gene_num / 10) and use the user-specified target_sampling_count.
+#         4. If gene_num is greater than 20000, set selected_num = 2000 and use the user-specified target_sampling_count.
+#     """
+#     if gene_num <= 0:
+#         raise ValueError("gene_num must be greater than 0.")
 
-    # Condition 1: When gene_num is less than 500
-    elif gene_num < 500:
-        selected_num = gene_num
-    # Condition 2: When gene_num is between 500 and 5000
-    elif gene_num < 5000:
-        selected_num = 500
-    # Condition 3: When gene_num is between 5000 and 20000 (inclusive)
-    elif gene_num <= 20000:
-        selected_num = math.ceil(gene_num / 10)
-    # Condition 4: When gene_num is greater than 20000
-    else:
-        selected_num = 2000
+#     # Condition 1: When gene_num is less than 500
+#     elif gene_num < 500:
+#         selected_num = gene_num
+#     # Condition 2: When gene_num is between 500 and 5000
+#     elif gene_num < 5000:
+#         selected_num = 500
+#     # Condition 3: When gene_num is between 5000 and 20000 (inclusive)
+#     elif gene_num <= 20000:
+#         selected_num = math.ceil(gene_num / 10)
+#     # Condition 4: When gene_num is greater than 20000
+#     else:
+#         selected_num = 2000
 
-    return selected_num
+#     return selected_num

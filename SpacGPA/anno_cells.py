@@ -1097,364 +1097,18 @@ def annotate_with_ggm(
 
 
 # integrate_annotations
-def integrate_annotations(
-    adata,
-    ggm_key="ggm",
-    modules_used=None,
-    modules_excluded=None,
-    modules_preferred=None,
-    result_anno="anno_density",
-    embedding_key="spatial",
-    k_neighbors=24,
-    purity_adjustment=True,
-    alpha=0.4,
-    beta=0.3,
-    gamma=0.3,
-    delta=0.4,
-    lambda_pair=0.3,
-    lr=0.1,
-    target_purity=0.8,
-    w_floor=0.1,
-    w_ceil=1.0,
-    max_iter=100,
-    energy_tol=1e-3,
-    p0=0.1,
-    tau=8.0,
-    random_state=None,
-):
-    """
-    Integrate module-wise annotations into a single, spatially smooth label
-    using a first-order Potts Conditional Random Field (CRF).
-
-    Parameters
-    ----------
-    adata : AnnData
-        Must contain:
-          • adata.obsm[embedding_key]: spatial coordinates
-          • per-module columns 'Mx_anno' or 'Mx_anno_smooth', and 'Mx_exp'
-    ggm_key : str
-        Key in adata.uns['ggm_keys'] pointing to module stats.
-    modules_used : list[str] or None
-        Modules to include; None means use all.
-    modules_excluded : list[str] or None
-        Modules to remove from the set.
-    modules_preferred : list[str] or None
-        Preferred modules when multiple candidates exist for a cell.
-    result_anno : str
-        Name of the output column in adata.obs.
-    embedding_key : str
-        Key for spatial coordinates in adata.obsm.
-    k_neighbors : int
-        Number of nearest neighbours (including the cell).
-    purity_adjustment : bool
-        Whether to perform Leiden clustering each iteration to adjust module weights.
-    alpha, beta, gamma, delta : float
-        Weights of the unary terms:
-          alpha - neighbor-vote weight (how much neighboring labels influence cost)
-          beta  - expression-rank weight (how much gene expression rank influences cost)
-          gamma - density weight (how much spatial cluster density influences cost)
-          delta - low-purity penalty weight (penalizes modules with low global purity, only if purity_adjustment is True)
-    lambda_pair : float
-        Strength of the Potts pairwise smoothing term (penalizes label differences).
-    lr : float
-        Learning rate for dynamic module weights.
-    target_purity : float
-        Target purity for weight updates.
-    w_floor, w_ceil : float
-        Bounds for dynamic module weights.
-    max_iter : int
-        Maximum number of iterations.
-    energy_tol : float
-        Convergence threshold on relative energy change.
-    p0 : float
-        Initial perturbation probability (simulated annealing).
-    tau : float
-        Decay constant for the perturbation probability.
-    random_state : int or None
-        Seed for random number generator.
-
-    Returns
-    -------
-    AnnData
-        The same AnnData with adata.obs[result_anno] containing final labels.
-    """
-    # reproducibility
-    random.seed(random_state)
-    np.random.seed(random_state)
-    rng = random.Random(random_state)
-
-    # sanity checks
-    if embedding_key not in adata.obsm:
-        raise KeyError(f"{embedding_key} not found in adata.obsm")
-    if ggm_key not in adata.uns["ggm_keys"]:
-        raise KeyError(f"{ggm_key} not found in adata.uns['ggm_keys']")
-    
-    # print parameter meanings and values
-    print(
-        f"Main parameters for integration:\n"
-        f"  alpha = {alpha:.2f}  for neighbor-vote weight\n"
-        f"  beta  = {beta:.2f}  for expression-rank weight\n"
-        f"  gamma = {gamma:.2f}  for spatial-density weight\n"
-        f"  delta = {delta:.2f}  for low-purity penalty weight\n"
-        f"  lambda_pair = {lambda_pair:.2f}  for potts smoothing strength\n"
-    )
-
-    # load module list
-    stats_key = adata.uns["ggm_keys"][ggm_key]["module_stats"]
-    modules_df = adata.uns[stats_key]
-    all_modules = list(pd.unique(modules_df["module_id"]))
-    modules_used = modules_used or all_modules
-    if modules_excluded:
-        modules_used = [m for m in modules_used if m not in modules_excluded]
-
-    # build spatial KNN graph
-    X = adata.obsm[embedding_key]
-    n_cells = adata.n_obs
-    knn = NearestNeighbors(n_neighbors=k_neighbors + 1).fit(X)
-    dist, idx = knn.kneighbors(X)
-    sigma = max(np.mean(dist[:, 1:]), 1e-6)
-    W = np.exp(-dist**2 / sigma**2)
-    lam = lambda_pair * W[:, 1:]
-
-    # load annotations, compute ranks and density
-    anno = {}
-    rank_norm = {}
-    dens_log = {}
-    for m in modules_used:
-        col = f"{m}_anno_smooth" if f"{m}_anno_smooth" in adata.obs else f"{m}_anno"
-        if col not in adata.obs or f"{m}_exp" not in adata.obs:
-            raise KeyError(f"Missing columns for module {m}")
-        lab = (adata.obs[col] == m).astype(int).values
-        anno[m] = lab
-
-        r = rankdata(-adata.obs[f"{m}_exp"].values, method="dense")
-        rank_norm[m] = (r - 1) / (n_cells - 1)
-
-        pts = X[lab == 1]
-        if len(pts) >= 3:
-            dens_log[m] = -KernelDensity().fit(pts).score_samples(X)
-        else:
-            dens_log[m] = np.zeros(n_cells)
-
-    # define unary energy
-    w_mod = {m: 1.0 for m in modules_used}
-    def unary(i, m):
-        nb = idx[i, 1:]
-        s = W[i, 1:].sum()
-        vote = (W[i, 1:] * anno[m][nb]).sum() / s if s else 0.0
-        vote *= w_mod[m]
-        return (
-            alpha * (1 - vote)
-            + beta * rank_norm[m][i]
-            + gamma * dens_log[m][i]
-            + delta * (1 - w_mod[m])
-        )
-
-    # initial labeling
-    label = np.empty(n_cells, dtype=object)
-    for i in range(n_cells):
-        cand = [m for m in modules_used if anno[m][i]] or modules_used
-        if modules_preferred:
-            pref = [m for m in cand if m in modules_preferred]
-            cand = pref or cand
-        label[i] = min(cand, key=lambda m: unary(i, m))
-
-    # energy function
-    def energy():
-        u = sum(unary(i, label[i]) for i in range(n_cells))
-        p = float((lam * (label[idx[:, 1:]] != label[:, None])).sum())
-        return u + p
-
-    prev_E = energy()
-    print("Starting optimization...")
-    print(f"Iteration:   0, Energy: {prev_E:.2f}")
-
-    # optimization loop
-    converged = False
-    last_pr_len = 0
-    for t in range(1, max_iter + 1):
-        # optionally update module weights based on Leiden purity
-        if purity_adjustment:
-            g = nx.Graph()
-            g.add_nodes_from(range(n_cells))
-            for i in range(n_cells):
-                for j in idx[i, 1:]:
-                    g.add_edge(i, j)
-            nx.set_node_attributes(g, {i: label[i] for i in range(n_cells)}, "label")
-            part = leidenalg.find_partition(
-                Graph.from_networkx(g),
-                leidenalg.RBConfigurationVertexPartition,
-                seed=random_state
-            )
-
-            purity = {m: [] for m in modules_used}
-            for cluster in part:
-                counts = {}
-                for v in cluster:
-                    counts[label[v]] = counts.get(label[v], 0) + 1
-                cp = max(counts.values()) / len(cluster)
-                for m, v in counts.items():
-                    if m in modules_used:
-                        purity[m].append(v / len(cluster) * cp)
-            for m in modules_used:
-                if purity[m]:
-                    mp = float(np.mean(purity[m]))
-                    w_mod[m] = np.clip(w_mod[m] * (1 + lr * (mp - target_purity)),
-                                       w_floor, w_ceil)
-
-        # ICM with annealed perturbation
-        changed = 0
-        p_t = p0 * np.exp(-t / tau)
-        for i in range(n_cells):
-            cand = [m for m in modules_used if anno[m][i]] or modules_used
-            if modules_preferred:
-                pref = [m for m in cand if m in modules_preferred]
-                cand = pref or cand
-            if label[i] not in cand:
-                cand.append(label[i])
-
-            if random.random() < p_t:
-                new_lab = rng.choice(cand)
-            else:
-                pair_cost = lam[i] * (label[idx[i, 1:]] != np.array(cand)[:, None])
-                total = [unary(i, m) + pair_cost[k].sum() for k, m in enumerate(cand)]
-                new_lab = cand[int(np.argmin(total))]
-
-            if new_lab != label[i]:
-                label[i] = new_lab
-                changed += 1
-
-        curr_E = energy()
-        msg = f"Iteration: {t:3}, Energy: {curr_E:.2f}, ΔE: {prev_E-curr_E:+.2f}, Changed: {changed}"
-        sys.stdout.write("\r" + " " * last_pr_len + "\r")
-        sys.stdout.write(msg)
-        sys.stdout.flush()
-        last_pr_len = len(msg)
-        if abs(prev_E - curr_E) / max(abs(prev_E), 1.0) < energy_tol:
-            print("\nConverged\n")
-            converged = True
-            break
-        prev_E = curr_E
-
-    if not converged:
-        print("\nStopped after max_iter without convergence\n")
-
-    adata.obs[result_anno] = label
-
-
-
-
-
-
-
-
-
-
-
-
-
-############################################################################################################
-# Old functions
-# smooth_annotations_noadd
-def smooth_annotations_noadd(adata,
-                            ggm_key='ggm', 
-                            modules_used=None,
-                            modules_excluded=None, 
-                            embedding_key='spatial', k_neighbors=24, min_annotated_neighbors=1):
-    """
-    Smooth spatial annotations by processing each module's annotation.
-    
-    Parameters:
-      adata (anndata.AnnData): AnnData object containing spatial transcriptomics data.
-      ggm_key (str): Key for the GGM object in adata.uns['ggm_keys'].
-      modules_used (list): List of modules to smooth; if None, all modules are used.(default None)
-      modules_excluded (list): List of modules to exclude from smoothing (default None).
-      embedding_key (str): Key in adata.obsm for spatial coordinates (default 'spatial').
-      k_neighbors (int): Number of KNN neighbors (default 24); may need adjustment based on technology and cell density.
-      min_annotated_neighbors (int): Minimum number of neighbors with annotation 1 required to retain the annotation (default 1).
-    """
-    if ggm_key not in adata.uns['ggm_keys']:
-        raise ValueError(f"{ggm_key} not found in adata.uns['ggm_keys']")
-    
-    module_stats_key = adata.uns['ggm_keys'][ggm_key]['module_stats']
-
-    # Check input: ensure the embedding key exists in adata.obsm
-    if embedding_key not in adata.obsm:
-        raise ValueError(f"{embedding_key} not found in adata.obsm. Please ensure the coordinate exists.")
-    
-    # If modules_used is not provided, get all modules from adata.uns['module_stats']
-    if modules_used is None:
-        modules_used = adata.uns[module_stats_key]['module_id'].unique()
-    # Exclude modules if the modules_excluded list is provided
-    if modules_excluded is not None:
-        modules_used = [mid for mid in modules_used if mid not in modules_excluded]
-                        
-    # Remove existing smoothed annotation columns if they exist
-    existing_columns = [f"{mid}_anno_smooth" for mid in modules_used if f"{mid}_anno_smooth" in adata.obs]
-    if existing_columns:
-        print(f"Removing existing smooth annotation columns: {existing_columns}")
-        adata.obs.drop(columns=existing_columns, inplace=True)
-
-    # Extract spatial coordinates and the annotation columns to be smoothed
-    embedding_coords = adata.obsm[embedding_key]
-    module_annotations = adata.obs.loc[:, [f"{mid}_anno" for mid in modules_used]]
-    # Reset the module id anno to 0/1 anno
-    for col in module_annotations.columns:
-        orig_name = col.replace("_anno", "")
-        module_annotations[col] = (module_annotations[col] == orig_name).astype(int)
-
-        n_cells, _ = module_annotations.shape
-
-    # Compute KNN neighbors based on the embedding coordinates
-    print(f"\nCalculating {k_neighbors} nearest neighbors for each cell based on {embedding_key} embedding...\n")
-    k = k_neighbors + 1  # include self
-    nbrs = NearestNeighbors(n_neighbors=k, metric='euclidean').fit(embedding_coords)
-    _, indices = nbrs.kneighbors(embedding_coords)  # indices: KNN indices for each cell
-
-    # Initialize the smoothed annotation matrix
-    smooth_annotations = np.zeros_like(module_annotations, dtype=int)
-
-    # Smooth each module's annotation
-    for mid in module_annotations.columns:
-        module_values = module_annotations[mid].values  # current module's annotation values
-        smooth_values = np.zeros(n_cells, dtype=int)  # initialize smoothed values
-
-        for i in range(n_cells):
-            if module_values[i] == 1:  # only process cells with annotation 1
-                neighbor_values = module_values[indices[i, 1:]]  # KNN neighbor annotations (excluding self)
-                if np.sum(neighbor_values) >= min_annotated_neighbors:  # if at least min_annotated_neighbors neighbors are 1
-                    smooth_values[i] = 1
-
-        # Store the smoothed values in the matrix
-        smooth_annotations[:, module_annotations.columns.get_loc(mid)] = smooth_values
-        print(f"{mid.replace('_anno', '')} processed. removed cells: {np.sum(module_values) - np.sum(smooth_values)}, remain cells: {np.sum(smooth_values)}")
-
-    # Save the smoothed annotations to adata.obs
-    smooth_annotations = pd.DataFrame(smooth_annotations,
-                                      index=adata.obs_names,
-                                      columns=[f"{mid}_smooth" for mid in module_annotations.columns])
-    # Reset the 0/1 anno to module id or None
-    for col in smooth_annotations.columns:
-        orig_name = col.replace("_anno_smooth", "")
-        smooth_annotations[col] = np.where(smooth_annotations[col] == 1, orig_name, None)
-        smooth_annotations[col] = pd.Categorical(smooth_annotations[col])
-    adata.obs = pd.concat([adata.obs, smooth_annotations], axis=1)
-
-    print("\nAnnotation smoothing completed. Results stored in adata.obs.\n")
-
-# integrate_annotations_noweight
-def integrate_annotations_noweight(adata,
-                                    ggm_key='ggm',
-                                    cross_ggm = False,
-                                    modules_used=None,
-                                    modules_excluded=None,
-                                    modules_preferred=None,
-                                    result_anno='annotation',
-                                    use_smooth=True,
-                                    embedding_key='spatial',
-                                    k_neighbors=24,
-                                    neighbor_similarity_ratio=0.90
-                                    ):            
+def integrate_annotations(adata,
+                        ggm_key='ggm',
+                        cross_ggm = False,
+                        modules_used=None,
+                        modules_excluded=None,
+                        modules_preferred=None,
+                        result_anno='annotation',
+                        use_smooth=True,
+                        embedding_key='spatial',
+                        k_neighbors=24,
+                        neighbor_similarity_ratio=0.90
+                        ):            
     """
     Integrate cell annotations from multiple modules using the following logic:
       1) Optionally use smoothed annotations (controlled by use_smooth);
@@ -1632,98 +1286,340 @@ def integrate_annotations_noweight(adata,
     print(f"\nIntegrated annotation stored in adata.obs['{result_anno}'].\n")
 
 
-# integrate_annotations_old
-def integrate_annotations_old(adata, ggm_key='ggm',cross_ggm = False,
-                              modules_used=None, modules_excluded=None,
-                              result_anno = "annotation", use_smooth=True):
-    """
-    Integrate module annotations into a single cell annotation.
+############################################################################################################
+# Old functions
+# smooth_annotations_noadd
+# def smooth_annotations_noadd(adata,
+#                             ggm_key='ggm', 
+#                             modules_used=None,
+#                             modules_excluded=None, 
+#                             embedding_key='spatial', k_neighbors=24, min_annotated_neighbors=1):
+#     """
+#     Smooth spatial annotations by processing each module's annotation.
     
-    Parameters:
-        adata (anndata.AnnData): AnnData object containing module annotations.
-        ggm_key (str): Key for the GGM object in adata.uns['ggm_keys'].
-        cross_ggm (bool): Whether to integrate annotations from multiple GGMs (default False).
-        modules_used (list): List of module IDs to integrate; if None, all modules are used.
-        modules_excluded (list): List of module IDs to exclude from integration (default None).
-        result_anno (str): Column name for the integrated annotation (default 'annotation').
-        use_smooth (bool): Whether to use smoothed annotations (default True).
-    """
-    if ggm_key not in adata.uns['ggm_keys']:    
-        raise ValueError(f"{ggm_key} not found in adata.uns['ggm_keys']")
-    mod_stats_key = adata.uns['ggm_keys'][ggm_key]['module_stats']
-
-    if cross_ggm and len(adata.uns['ggm_keys']) > 2:
-        if modules_used is None:
-            raise ValueError("When cross_ggm is True, modules_used must be provided manually.")
-
-    # Check if the integrated annotation column already exists
-    if adata.obs.get(result_anno) is not None:
-        print(f"NOTE: The '{result_anno}' already exists in adata.obs, which will be overwritten.")
-        adata.obs.drop(columns=result_anno, inplace=True)
-
-    # Determine and extract annotation columns
-    if modules_used is None:
-        modules_used = adata.uns[mod_stats_key]['module_id'].unique()
-    # Exclude modules if the modules_excluded list is provided
-    if modules_excluded is not None:
-        modules_used = [mid for mid in modules_used if mid not in modules_excluded]
-
-    if use_smooth:
-        # Identify modules missing smoothed annotation columns
-        missing_smooth = [mid for mid in modules_used if f"{mid}_anno_smooth" not in adata.obs]
-        if missing_smooth:
-            print(f"\nThese modules do not have 'Smooth anno': {missing_smooth}. Using 'anno' instead.")
-        # For modules with smoothed columns, use them; otherwise, use the original '_anno' columns
-        existing_columns = []
-        for mid in modules_used:
-            if f"{mid}_anno_smooth" in adata.obs:
-                existing_columns.append(f"{mid}_anno_smooth")
-            elif f"{mid}_anno" in adata.obs:
-                existing_columns.append(f"{mid}_anno")
-    else:
-        existing_columns = [f"{mid}_anno" for mid in modules_used if f"{mid}_anno" in adata.obs]
+#     Parameters:
+#       adata (anndata.AnnData): AnnData object containing spatial transcriptomics data.
+#       ggm_key (str): Key for the GGM object in adata.uns['ggm_keys'].
+#       modules_used (list): List of modules to smooth; if None, all modules are used.(default None)
+#       modules_excluded (list): List of modules to exclude from smoothing (default None).
+#       embedding_key (str): Key in adata.obsm for spatial coordinates (default 'spatial').
+#       k_neighbors (int): Number of KNN neighbors (default 24); may need adjustment based on technology and cell density.
+#       min_annotated_neighbors (int): Minimum number of neighbors with annotation 1 required to retain the annotation (default 1).
+#     """
+#     if ggm_key not in adata.uns['ggm_keys']:
+#         raise ValueError(f"{ggm_key} not found in adata.uns['ggm_keys']")
     
-    if len(existing_columns) != len(modules_used):
-        raise ValueError("The annotation columns for the specified modules do not fully match those in adata.obs. Please check your input.")
+#     module_stats_key = adata.uns['ggm_keys'][ggm_key]['module_stats']
+
+#     # Check input: ensure the embedding key exists in adata.obsm
+#     if embedding_key not in adata.obsm:
+#         raise ValueError(f"{embedding_key} not found in adata.obsm. Please ensure the coordinate exists.")
     
+#     # If modules_used is not provided, get all modules from adata.uns['module_stats']
+#     if modules_used is None:
+#         modules_used = adata.uns[module_stats_key]['module_id'].unique()
+#     # Exclude modules if the modules_excluded list is provided
+#     if modules_excluded is not None:
+#         modules_used = [mid for mid in modules_used if mid not in modules_excluded]
+                        
+#     # Remove existing smoothed annotation columns if they exist
+#     existing_columns = [f"{mid}_anno_smooth" for mid in modules_used if f"{mid}_anno_smooth" in adata.obs]
+#     if existing_columns:
+#         print(f"Removing existing smooth annotation columns: {existing_columns}")
+#         adata.obs.drop(columns=existing_columns, inplace=True)
+
+#     # Extract spatial coordinates and the annotation columns to be smoothed
+#     embedding_coords = adata.obsm[embedding_key]
+#     module_annotations = adata.obs.loc[:, [f"{mid}_anno" for mid in modules_used]]
+#     # Reset the module id anno to 0/1 anno
+#     for col in module_annotations.columns:
+#         orig_name = col.replace("_anno", "")
+#         module_annotations[col] = (module_annotations[col] == orig_name).astype(int)
+
+#         n_cells, _ = module_annotations.shape
+
+#     # Compute KNN neighbors based on the embedding coordinates
+#     print(f"\nCalculating {k_neighbors} nearest neighbors for each cell based on {embedding_key} embedding...\n")
+#     k = k_neighbors + 1  # include self
+#     nbrs = NearestNeighbors(n_neighbors=k, metric='euclidean').fit(embedding_coords)
+#     _, indices = nbrs.kneighbors(embedding_coords)  # indices: KNN indices for each cell
+
+#     # Initialize the smoothed annotation matrix
+#     smooth_annotations = np.zeros_like(module_annotations, dtype=int)
+
+#     # Smooth each module's annotation
+#     for mid in module_annotations.columns:
+#         module_values = module_annotations[mid].values  # current module's annotation values
+#         smooth_values = np.zeros(n_cells, dtype=int)  # initialize smoothed values
+
+#         for i in range(n_cells):
+#             if module_values[i] == 1:  # only process cells with annotation 1
+#                 neighbor_values = module_values[indices[i, 1:]]  # KNN neighbor annotations (excluding self)
+#                 if np.sum(neighbor_values) >= min_annotated_neighbors:  # if at least min_annotated_neighbors neighbors are 1
+#                     smooth_values[i] = 1
+
+#         # Store the smoothed values in the matrix
+#         smooth_annotations[:, module_annotations.columns.get_loc(mid)] = smooth_values
+#         print(f"{mid.replace('_anno', '')} processed. removed cells: {np.sum(module_values) - np.sum(smooth_values)}, remain cells: {np.sum(smooth_values)}")
+
+#     # Save the smoothed annotations to adata.obs
+#     smooth_annotations = pd.DataFrame(smooth_annotations,
+#                                       index=adata.obs_names,
+#                                       columns=[f"{mid}_smooth" for mid in module_annotations.columns])
+#     # Reset the 0/1 anno to module id or None
+#     for col in smooth_annotations.columns:
+#         orig_name = col.replace("_anno_smooth", "")
+#         smooth_annotations[col] = np.where(smooth_annotations[col] == 1, orig_name, None)
+#         smooth_annotations[col] = pd.Categorical(smooth_annotations[col])
+#     adata.obs = pd.concat([adata.obs, smooth_annotations], axis=1)
+
+#     print("\nAnnotation smoothing completed. Results stored in adata.obs.\n")
+
+# integrate_annotations_addweight
+# def integrate_annotations_addweight(
+#     adata,
+#     ggm_key="ggm",
+#     modules_used=None,
+#     modules_excluded=None,
+#     modules_preferred=None,
+#     result_anno="anno_density",
+#     embedding_key="spatial",
+#     k_neighbors=24,
+#     purity_adjustment=True,
+#     alpha=0.4,
+#     beta=0.3,
+#     gamma=0.3,
+#     delta=0.4,
+#     lambda_pair=0.3,
+#     lr=0.1,
+#     target_purity=0.8,
+#     w_floor=0.1,
+#     w_ceil=1.0,
+#     max_iter=100,
+#     energy_tol=1e-3,
+#     p0=0.1,
+#     tau=8.0,
+#     random_state=None,
+# ):
+#     """
+#     Integrate module-wise annotations into a single, spatially smooth label
+#     using a first-order Potts Conditional Random Field (CRF).
+
+#     Parameters
+#     ----------
+#     adata : AnnData
+#         Must contain:
+#           • adata.obsm[embedding_key]: spatial coordinates
+#           • per-module columns 'Mx_anno' or 'Mx_anno_smooth', and 'Mx_exp'
+#     ggm_key : str
+#         Key in adata.uns['ggm_keys'] pointing to module stats.
+#     modules_used : list[str] or None
+#         Modules to include; None means use all.
+#     modules_excluded : list[str] or None
+#         Modules to remove from the set.
+#     modules_preferred : list[str] or None
+#         Preferred modules when multiple candidates exist for a cell.
+#     result_anno : str
+#         Name of the output column in adata.obs.
+#     embedding_key : str
+#         Key for spatial coordinates in adata.obsm.
+#     k_neighbors : int
+#         Number of nearest neighbours (including the cell).
+#     purity_adjustment : bool
+#         Whether to perform Leiden clustering each iteration to adjust module weights.
+#     alpha, beta, gamma, delta : float
+#         Weights of the unary terms:
+#           alpha - neighbor-vote weight (how much neighboring labels influence cost)
+#           beta  - expression-rank weight (how much gene expression rank influences cost)
+#           gamma - density weight (how much spatial cluster density influences cost)
+#           delta - low-purity penalty weight (penalizes modules with low global purity, only if purity_adjustment is True)
+#     lambda_pair : float
+#         Strength of the Potts pairwise smoothing term (penalizes label differences).
+#     lr : float
+#         Learning rate for dynamic module weights.
+#     target_purity : float
+#         Target purity for weight updates.
+#     w_floor, w_ceil : float
+#         Bounds for dynamic module weights.
+#     max_iter : int
+#         Maximum number of iterations.
+#     energy_tol : float
+#         Convergence threshold on relative energy change.
+#     p0 : float
+#         Initial perturbation probability (simulated annealing).
+#     tau : float
+#         Decay constant for the perturbation probability.
+#     random_state : int or None
+#         Seed for random number generator.
+
+#     Returns
+#     -------
+#     AnnData
+#         The same AnnData with adata.obs[result_anno] containing final labels.
+#     """
+#     # reproducibility
+#     random.seed(random_state)
+#     np.random.seed(random_state)
+#     rng = random.Random(random_state)
+
+#     # sanity checks
+#     if embedding_key not in adata.obsm:
+#         raise KeyError(f"{embedding_key} not found in adata.obsm")
+#     if ggm_key not in adata.uns["ggm_keys"]:
+#         raise KeyError(f"{ggm_key} not found in adata.uns['ggm_keys']")
     
-    # Extract module annotations
-    module_annotations = adata.obs.loc[:, [mid for mid in existing_columns]]
-    # Reset the module id anno to 0/1 anno
-    for col in module_annotations.columns:
-        orig_name_1 = col.replace("_anno", "")
-        orig_name_2 = col.replace("_anno_smooth", "")
-        if orig_name_1 in module_annotations.columns:
-            module_annotations[col] = (module_annotations[col] == orig_name_1).astype(int)
-        else:
-            module_annotations[col] = (module_annotations[col] == orig_name_2).astype(int)
-        
-    # Compute the number of annotated cells for each module
-    module_counts = module_annotations.sum(axis=0)
+#     # print parameter meanings and values
+#     print(
+#         f"Main parameters for integration:\n"
+#         f"  alpha = {alpha:.2f}  for neighbor-vote weight\n"
+#         f"  beta  = {beta:.2f}  for expression-rank weight\n"
+#         f"  gamma = {gamma:.2f}  for spatial-density weight\n"
+#         f"  delta = {delta:.2f}  for low-purity penalty weight\n"
+#         f"  lambda_pair = {lambda_pair:.2f}  for potts smoothing strength\n"
+#     )
 
-    # Sort modules by the number of annotated cells in ascending order
-    sorted_modules = module_counts.sort_values().index
+#     # load module list
+#     stats_key = adata.uns["ggm_keys"][ggm_key]["module_stats"]
+#     modules_df = adata.uns[stats_key]
+#     all_modules = list(pd.unique(modules_df["module_id"]))
+#     modules_used = modules_used or all_modules
+#     if modules_excluded:
+#         modules_used = [m for m in modules_used if m not in modules_excluded]
 
-    # Initialize an empty Series to store the final cell annotations
-    cell_annotations = pd.Series(index=module_annotations.index, dtype=object)
+#     # build spatial KNN graph
+#     X = adata.obsm[embedding_key]
+#     n_cells = adata.n_obs
+#     knn = NearestNeighbors(n_neighbors=k_neighbors + 1).fit(X)
+#     dist, idx = knn.kneighbors(X)
+#     sigma = max(np.mean(dist[:, 1:]), 1e-6)
+#     W = np.exp(-dist**2 / sigma**2)
+#     lam = lambda_pair * W[:, 1:]
 
-    # Annotate cells iteratively
-    for module in sorted_modules:
-        module_name = module.replace("_anno_smooth", "")
-        module_name = module_name.replace("_anno", "")
-        # Find cells with annotation value 1 for the current module
-        cells_to_annotate = module_annotations.index[module_annotations[module] == 1]
+#     # load annotations, compute ranks and density
+#     anno = {}
+#     rank_norm = {}
+#     dens_log = {}
+#     for m in modules_used:
+#         col = f"{m}_anno_smooth" if f"{m}_anno_smooth" in adata.obs else f"{m}_anno"
+#         if col not in adata.obs or f"{m}_exp" not in adata.obs:
+#             raise KeyError(f"Missing columns for module {m}")
+#         lab = (adata.obs[col] == m).astype(int).values
+#         anno[m] = lab
 
-        # Only annotate cells that have not been annotated yet
-        cells_to_annotate = cells_to_annotate[cell_annotations[cells_to_annotate].isna()]
+#         r = rankdata(-adata.obs[f"{m}_exp"].values, method="dense")
+#         rank_norm[m] = (r - 1) / (n_cells - 1)
 
-        # Set these cells to the current module name
-        cell_annotations[cells_to_annotate] = module_name
+#         pts = X[lab == 1]
+#         if len(pts) >= 3:
+#             dens_log[m] = -KernelDensity().fit(pts).score_samples(X)
+#         else:
+#             dens_log[m] = np.zeros(n_cells)
 
-    # Add the final cell annotations to adata.obs
-    adata.obs[result_anno] = cell_annotations
+#     # define unary energy
+#     w_mod = {m: 1.0 for m in modules_used}
+#     def unary(i, m):
+#         nb = idx[i, 1:]
+#         s = W[i, 1:].sum()
+#         vote = (W[i, 1:] * anno[m][nb]).sum() / s if s else 0.0
+#         vote *= w_mod[m]
+#         return (
+#             alpha * (1 - vote)
+#             + beta * rank_norm[m][i]
+#             + gamma * dens_log[m][i]
+#             + delta * (1 - w_mod[m])
+#         )
 
-    print(f"Cell annotation completed. Results stored in adata.obs['{result_anno}'].")
+#     # initial labeling
+#     label = np.empty(n_cells, dtype=object)
+#     for i in range(n_cells):
+#         cand = [m for m in modules_used if anno[m][i]] or modules_used
+#         if modules_preferred:
+#             pref = [m for m in cand if m in modules_preferred]
+#             cand = pref or cand
+#         label[i] = min(cand, key=lambda m: unary(i, m))
+
+#     # energy function
+#     def energy():
+#         u = sum(unary(i, label[i]) for i in range(n_cells))
+#         p = float((lam * (label[idx[:, 1:]] != label[:, None])).sum())
+#         return u + p
+
+#     prev_E = energy()
+#     print("Starting optimization...")
+#     print(f"Iteration:   0, Energy: {prev_E:.2f}")
+
+#     # optimization loop
+#     converged = False
+#     last_pr_len = 0
+#     for t in range(1, max_iter + 1):
+#         # optionally update module weights based on Leiden purity
+#         if purity_adjustment:
+#             g = nx.Graph()
+#             g.add_nodes_from(range(n_cells))
+#             for i in range(n_cells):
+#                 for j in idx[i, 1:]:
+#                     g.add_edge(i, j)
+#             nx.set_node_attributes(g, {i: label[i] for i in range(n_cells)}, "label")
+#             part = leidenalg.find_partition(
+#                 Graph.from_networkx(g),
+#                 leidenalg.RBConfigurationVertexPartition,
+#                 seed=random_state
+#             )
+
+#             purity = {m: [] for m in modules_used}
+#             for cluster in part:
+#                 counts = {}
+#                 for v in cluster:
+#                     counts[label[v]] = counts.get(label[v], 0) + 1
+#                 cp = max(counts.values()) / len(cluster)
+#                 for m, v in counts.items():
+#                     if m in modules_used:
+#                         purity[m].append(v / len(cluster) * cp)
+#             for m in modules_used:
+#                 if purity[m]:
+#                     mp = float(np.mean(purity[m]))
+#                     w_mod[m] = np.clip(w_mod[m] * (1 + lr * (mp - target_purity)),
+#                                        w_floor, w_ceil)
+
+#         # ICM with annealed perturbation
+#         changed = 0
+#         p_t = p0 * np.exp(-t / tau)
+#         for i in range(n_cells):
+#             cand = [m for m in modules_used if anno[m][i]] or modules_used
+#             if modules_preferred:
+#                 pref = [m for m in cand if m in modules_preferred]
+#                 cand = pref or cand
+#             if label[i] not in cand:
+#                 cand.append(label[i])
+
+#             if random.random() < p_t:
+#                 new_lab = rng.choice(cand)
+#             else:
+#                 pair_cost = lam[i] * (label[idx[i, 1:]] != np.array(cand)[:, None])
+#                 total = [unary(i, m) + pair_cost[k].sum() for k, m in enumerate(cand)]
+#                 new_lab = cand[int(np.argmin(total))]
+
+#             if new_lab != label[i]:
+#                 label[i] = new_lab
+#                 changed += 1
+
+#         curr_E = energy()
+#         msg = f"Iteration: {t:3}, Energy: {curr_E:.2f}, ΔE: {prev_E-curr_E:+.2f}, Changed: {changed}"
+#         sys.stdout.write("\r" + " " * last_pr_len + "\r")
+#         sys.stdout.write(msg)
+#         sys.stdout.flush()
+#         last_pr_len = len(msg)
+#         if abs(prev_E - curr_E) / max(abs(prev_E), 1.0) < energy_tol:
+#             print("\nConverged\n")
+#             converged = True
+#             break
+#         prev_E = curr_E
+
+#     if not converged:
+#         print("\nStopped after max_iter without convergence\n")
+
+#     adata.obs[result_anno] = label
+
 
 # def construct_spatial_weights(coords, k_neighbors=6):
 #     """

@@ -36,10 +36,10 @@ class FDRResults:
 class create_ggm:   
     def __init__(self, x, round_num=None, selected_num=None, target_sampling_time=100, 
                  gene_name=None, sample_name=None, project_name='na',
-                 cut_off_pcor=0.03, cut_off_coex_cell=10,  
+                 cut_off_pcor=0.02, cut_off_coex_cell=10,  
                  use_chunking=True, chunk_size=5000, 
                  seed=98, run_mode=2, double_precision=False, stop_threshold=0,
-                 FDR_control=False, FDR_threshold=0.01, auto_adjust=False,
+                 FDR_control=True, FDR_threshold=0.05, auto_adjust=True,
                  auto_find_modules=False):
         """
         Instruction:  
@@ -59,7 +59,7 @@ class create_ggm:
         gene_name : an array of gene names. only used when x is a matrix.
         sample_name : an array of spot(or cell) ids. only used when x is a matrix.
         project_name : optional, default as 'na'. set a name for the ggm object.
-        cut_off_pcor : optional, default as 0.03. 
+        cut_off_pcor : optional, default as 0.02. 
         cut_off_coex_cell : optional, default as 10.
         use_chunking : optional, default as True. Whether to enable chunk-based computations.
         chunk_size : optional, default as 5000. Controls memory usage for large datasets.   
@@ -70,9 +70,9 @@ class create_ggm:
                    2 - All computations on GPU.
         double_precision : optional, default as False. Whether to use double precision for calculations.
         stop_threshold: threshold for stopping the loop if the sum of `valid_elements_count` over 100 iterations is less than this value.
-        FDR_control: optional, default as False. Whether to perform FDR control automatically.
-        FDR_threshold: optional, default as 0.01. The FDR threshold for filtering significant edges. only used when FDR_control is True.
-        auto_adjust: optional, default as False. Whether to adjust the cutoff based on FDR results. only used when FDR_control is True.
+        FDR_control: optional, default as True. Whether to perform FDR control automatically.
+        FDR_threshold: optional, default as 0.05. The FDR threshold for filtering significant edges. only used when FDR_control is True.
+        auto_adjust: optional, default as True. Whether to adjust the cutoff based on FDR results. only used when FDR_control is True.
         auto_find_modules: optional, default as False. Whether to automatically find modules based on the significant edges.
                            Note: This parameter is only supported with methods='mcl-hub'.
         """
@@ -264,7 +264,7 @@ class create_ggm:
         self.gene_num = x.shape[1]
     
     
-    def fdr_control(self, permutation_fraction=1.0, FDR_threshold=0.01):
+    def fdr_control(self, permutation_fraction=1.0, FDR_threshold=0.05):
         """
         Perform FDR control by permuting gene columns and calculating the necessary statistics.
 
@@ -451,7 +451,7 @@ class create_ggm:
             print(f"Minimum Pcor threshold with FDR <= {FDR_threshold}: {min_pcor:.3f}")
 
 
-    def adjust_cutoff(self, pcor_threshold=0.03, coex_cell_threshold=10):
+    def adjust_cutoff(self, pcor_threshold=0.02, coex_cell_threshold=10):
         """
         Adjust the Pcor and coexpressed cell number thresholds based on FDR results.
 
