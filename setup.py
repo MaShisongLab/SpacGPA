@@ -18,7 +18,7 @@ setup(
         # SpacGPA/Ref_for_Enrichment/*
         "SpacGPA": ["Ref_for_Enrichment/*"],
     },
-    python_requires=">=3.9",
+    python_requires=">=3.8",
     install_requires=[
         # Core scientific stack
         "numpy",
