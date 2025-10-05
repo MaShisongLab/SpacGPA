@@ -33,7 +33,7 @@ SpacGPA is described in the preprint “[SpacGPA: annotating spatial transcripto
 **conda env create -f environment.yml**  
 **conda activate SpacGPA**  
 
-2) Install SpacGPA (from the repository root)  
+2) Install SpacGPA  
 **pip install -e .**  
 **conda deactivate**  
 
