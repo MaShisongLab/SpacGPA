@@ -149,19 +149,36 @@ class create_ggm_multi:
             use_chunking=use_chunking,
             chunk_size=chunk_size,
             stop_threshold=stop_threshold)
-        
-        print("Found", self.SigEdges.shape[0], "significant co-expressed gene pairs with partial correlation >=", cut_off_pcor, "and co-expressed cell number >=", cut_off_coex_cell)
-        
+                
         if FDR_control:
-            self.fdr_control()
+            self.fdr_control(permutation_fraction=1.0, FDR_threshold=self.FDR_threshold)
             fdr_summary = self.fdr.summary
             fdr_filtered = fdr_summary.loc[fdr_summary['FDR'] <= self.FDR_threshold]
             if fdr_filtered.shape[0] > 0:
                 min_pcor_row = fdr_filtered.iloc[0]
                 min_pcor = min_pcor_row['Pcor']
                 if auto_adjust:
-                    self.adjust_cutoff(pcor_threshold=round(min_pcor, 3),
-                                        coex_cell_threshold=self.cut_off_coex_cell) 
+                    if min_pcor > cut_off_pcor:
+                        self.adjust_cutoff(
+                            pcor_threshold=round(min_pcor, 3),
+                            coex_cell_threshold=self.cut_off_coex_cell
+                        )
+                    else:
+                        target = cut_off_pcor
+                        if (fdr_summary['Pcor'] == target).any():
+                            fdr_at_target = fdr_summary.loc[fdr_summary['Pcor'] == target, 'FDR'].iloc[0]
+                        else:
+                            idx_closest = (fdr_summary['Pcor'] - target).abs().idxmin()
+                            fdr_at_target = fdr_summary.loc[idx_closest, 'FDR']
+                        print(f"FDR at pcor={target}: {fdr_at_target:.2e}")
+                else:
+                    if min_pcor > cut_off_pcor:
+                        print(f"Note: Minimum Pcor threshold with FDR <= {self.FDR_threshold}: {min_pcor:.3f} is greater than the current cutoff {cut_off_pcor}.\nConsider adjusting the cutoff for more stringent filtering.")
+                    else:
+                        print(f"Found", self.SigEdges.shape[0], "significant co-expressed gene pairs with partial correlation >=", cut_off_pcor)
+        else:
+            print("Found", self.SigEdges.shape[0], "significant co-expressed gene pairs with partial correlation >=", cut_off_pcor,"without FDR control.")
+     
        
         if auto_find_modules:
             best_inflation, _ = find_best_inflation(self, 

@@ -86,7 +86,6 @@ class create_ggm:
         self.samples_num = None
         self.sample_name = sample_name
         self.project_name = project_name
-
         self.cut_off_pcor = cut_off_pcor
         self.cut_off_coex_cell = cut_off_coex_cell
         self.seed_used = seed
@@ -164,7 +163,6 @@ class create_ggm:
             chunk_size=chunk_size,
             stop_threshold=stop_threshold)
         
-        
         if FDR_control:
             self.fdr_control(permutation_fraction=1.0, FDR_threshold=self.FDR_threshold)
             fdr_summary = self.fdr.summary
@@ -173,22 +171,24 @@ class create_ggm:
                 min_pcor_row = fdr_filtered.iloc[0]
                 min_pcor = min_pcor_row['Pcor']
                 if auto_adjust:
-                    if min_pcor > 0.02:
+                    if min_pcor > cut_off_pcor:
                         self.adjust_cutoff(
                             pcor_threshold=round(min_pcor, 3),
                             coex_cell_threshold=self.cut_off_coex_cell
                         )
                     else:
-                        target = 0.02
+                        target = cut_off_pcor
                         if (fdr_summary['Pcor'] == target).any():
                             fdr_at_target = fdr_summary.loc[fdr_summary['Pcor'] == target, 'FDR'].iloc[0]
                         else:
                             idx_closest = (fdr_summary['Pcor'] - target).abs().idxmin()
                             fdr_at_target = fdr_summary.loc[idx_closest, 'FDR']
-                        print(f"FDR at pcor=0.02: {fdr_at_target:.3e}")
+                        print(f"FDR at pcor={target}: {fdr_at_target:.2e}")
                 else:
-                    if min_pcor < cut_off_pcor:
-                        print(f"Note: Minimum Pcor with FDR <= {self.FDR_threshold} is {min_pcor:.3f}, which is lower than the current cutoff of {cut_off_pcor}. Consider adjusting the cutoff if needed.")
+                    if min_pcor > cut_off_pcor:
+                        print(f"Note: Minimum Pcor threshold with FDR <= {self.FDR_threshold}: {min_pcor:.3f} is greater than the current cutoff {cut_off_pcor}.\nConsider adjusting the cutoff for more stringent filtering.")
+                    else:
+                        print(f"Found", self.SigEdges.shape[0], "significant co-expressed gene pairs with partial correlation >=", cut_off_pcor)
         else:
             print("Found", self.SigEdges.shape[0], "significant co-expressed gene pairs with partial correlation >=", cut_off_pcor,"without FDR control.")
                     
