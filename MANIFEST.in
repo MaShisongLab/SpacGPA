@@ -1,0 +1,9 @@
+# Top-level metadata/files
+include README.md
+include LICENSE*
+include pyproject.toml
+include setup.py
+include environment.yml
+
+# Package data for sdist
+recursive-include SpacGPA/Ref_for_Enrichment *
