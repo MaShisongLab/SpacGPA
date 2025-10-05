@@ -62,6 +62,7 @@ def get_module_anno(self, module_id, add_enrich_info=True, top_n=None, term_id=N
         raise ValueError(f"{module_id} not found in modules.")
 
     module_anno = self.modules[self.modules['module_id'] == module_id].copy()
+
     if add_enrich_info:
         if self.go_enrichment is not None:
             go_df = self.go_enrichment[self.go_enrichment['module_id'] == module_id].copy()
@@ -70,11 +71,16 @@ def get_module_anno(self, module_id, add_enrich_info=True, top_n=None, term_id=N
             else:
                 if top_n is not None:
                     go_df = go_df.head(top_n)
+                genes = module_anno['gene']
+                new_cols_go = {}
                 for _, row in go_df.iterrows():
                     go_id = row['go_id']
                     go_term = row['go_term']
-                    gene_list = row['genes_with_go_in_module'].split("/")
-                    module_anno[go_id] = module_anno['gene'].apply(lambda g: go_term if g in gene_list else None)
+                    gene_set = set(row['genes_with_go_in_module'].split("/"))
+                    mask = genes.isin(gene_set)
+                    new_cols_go[go_id] = np.where(mask, go_term, None)
+                if new_cols_go:
+                    module_anno = pd.concat([module_anno, pd.DataFrame(new_cols_go, index=module_anno.index)], axis=1)
 
         if self.mp_enrichment is not None:
             mp_df = self.mp_enrichment[self.mp_enrichment['module_id'] == module_id].copy()
@@ -83,11 +89,17 @@ def get_module_anno(self, module_id, add_enrich_info=True, top_n=None, term_id=N
             else:
                 if top_n is not None:
                     mp_df = mp_df.head(top_n)
+                genes = module_anno['gene']
+                new_cols_mp = {}
                 for _, row in mp_df.iterrows():
                     mp_id = row['mp_id']
                     mp_term = row['mp_term']
-                    gene_list = row['genes_with_mp_in_module'].split("/")
-                    module_anno[mp_id] = module_anno['gene'].apply(lambda g: mp_term if g in gene_list else None)
+                    gene_set = set(row['genes_with_mp_in_module'].split("/"))
+                    mask = genes.isin(gene_set)
+                    new_cols_mp[mp_id] = np.where(mask, mp_term, None)
+                if new_cols_mp:
+                    module_anno = pd.concat([module_anno, pd.DataFrame(new_cols_mp, index=module_anno.index)], axis=1)
+
     if term_id is not None:
         save_id = np.concatenate((go_df['go_id'].values, mp_df['mp_id'].values))
         remove_id = [x for x in save_id if x not in term_id]
