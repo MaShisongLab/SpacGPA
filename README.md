@@ -39,7 +39,7 @@ SpacGPA is described in the preprint “[SpacGPA: annotating spatial transcripto
 
 **Note:** If you prefer a different CUDA/toolkit, edit the PyTorch lines in environment.yml
 to match your GPU / driver before installation. See [PyTorch](https://pytorch.org/get-started/locally/)
-for a suitable Version build for your CUDA/CPU. Option B provides a conservative working environment; try replacing the software in environment.yml with a newer version if you expect faster computations.
+for a suitable version build for your CUDA/CPU. Option B provides a conservative working environment; try replacing the software in environment.yml with a newer version if you expect faster computations.
 
 ## Usage
 
