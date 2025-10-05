@@ -27,7 +27,7 @@ import sys
 import mygene
 import time
 
-def run_mcl(SigEdges, expansion=2, inflation=1.7, add_self_loops='mean', 
+def run_mcl(SigEdges, expansion=2, inflation=2, add_self_loops='mean', 
             max_iter=1000, tol=1e-6, pruning_threshold=1e-5, 
             run_mode=2,
             min_module_size = 10, topology_filtering = True, 
