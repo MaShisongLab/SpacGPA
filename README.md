@@ -47,7 +47,7 @@ for a suitable version build for your CUDA/CPU. Option B provides a conservative
 ## Usage
 
  • See the documentation and tutorials in [SpacGPA](https://spacgpa.readthedocs.io).  
- • Each tutorial covers a typical workflow: network construction → program identification (MCL) → functional enrichment analysis (GO/MP) → spatial transcriptome annotation using programs → visualization.
+ • Each tutorial covers a typical workflow: network construction → program identification → functional enrichment analysis of programs → spatial transcriptome annotation using programs → visualization.
 
 ## How to cite
 
