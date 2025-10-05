@@ -19,9 +19,14 @@ SpacGPA is described in the preprint “[SpacGPA: annotating spatial transcripto
 
 ## Installation
 
-### Option A — Create a conda environment (recommended)
+### Option A — Quick Installation
 
-**Before installation, Download the full repository** via clone `https://github.com/MaShisongLab/SpacGPA.git` and `cd` into it, or click **Code → Download ZIP** and unzip.
+**Before installation, Download the full repository** via clone `https://github.com/MaShisongLab/SpacGPA.git` and `cd` into it, or click **Code → Download ZIP** and unzip.  
+
+**cd SpacGPA-main**  
+**pip install -e .**  
+
+### Option B — Create a conda environment
 
 1) Create the environment  
 **cd SpacGPA-main**  
@@ -33,14 +38,8 @@ SpacGPA is described in the preprint “[SpacGPA: annotating spatial transcripto
 **conda deactivate**  
 
 **Note:** If you prefer a different CUDA/toolkit, edit the PyTorch lines in environment.yml
-to match your GPU / driver, or switch to CPU-only builds from pytorch. See [PyTorch](https://pytorch.org/get-started/locally/)
-for a suitable Version build for your CUDA/CPU
-
-### Option B — Planned package releases (not yet available)
-
-When published, installation will also be available via  
-PyPI: **pip install spacgpa**  
-or conda-forge: **conda install -c conda-forge spacgpa**
+to match your GPU / driver before installation. See [PyTorch](https://pytorch.org/get-started/locally/)
+for a suitable Version build for your CUDA/CPU. Option B provides a conservative working environment; try replacing the software in environment.yml with a newer version if you expect faster computations.
 
 ## Usage
 

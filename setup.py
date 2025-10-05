@@ -40,7 +40,12 @@ setup(
 
         # Annotation utilities
         "mygene",
-        # torch # Set in environment.yml
+
+        # torch and related
+        "pytorch",
+        "torchvision",
+        "torchaudio",
+        "pytorch-cuda",  
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
