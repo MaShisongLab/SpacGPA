@@ -42,10 +42,9 @@ setup(
         "mygene",
 
         # torch and related
-        "pytorch",
+        "torch",
         "torchvision",
         "torchaudio",
-        "pytorch-cuda",  
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

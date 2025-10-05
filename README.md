@@ -23,6 +23,9 @@ SpacGPA is described in the preprint “[SpacGPA: annotating spatial transcripto
 
 **Before installation, Download the full repository** via clone `https://github.com/MaShisongLab/SpacGPA.git` and `cd` into it, or click **Code → Download ZIP** and unzip.  
 
+1) Make sure you have installed CUDA-enabled PyTorch for GPU support (skip this step if using CPU only).
+
+2) Install SpacGPA  
 **cd SpacGPA-main**  
 **pip install -e .**  
 

@@ -483,9 +483,9 @@ def calculate_gmm_annotations(adata,
                               embedding_key='spatial',
                               k_neighbors=6,
                               max_iter=200,
-                              prob_threshold=0.99,
+                              prob_threshold=0.9999,
                               min_samples=10,
-                              n_components=3,
+                              n_components=2,
                               enable_fallback=True,
                               random_state=42
                               ):

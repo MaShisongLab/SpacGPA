@@ -324,18 +324,27 @@ def calculate_pcors_pytorch(x, round_num, selected_num, gene_name, project_name,
             average_loop_time = time_trend[:min(i + 1, 100)].mean().item()
             time_left = (round_num - i - 1) * average_loop_time / 60
             elapsed_min = (time.time() - t0) / 60.0
-            sys.stdout.write(f"\rIteration: {i + 1}/{round_num}, "
-                  f"Avg loop time: {average_loop_time:.4f} s, "
-                  f"Elapsed time: {elapsed_min:.2f} min, "
-                  f"Estimated time left: {time_left:.2f} min.                  "
-                  )
-            sys.stdout.flush()
+            if (i == 0) or ((i+1) % 10 == 0) or (i + 1 == round_num):
+                sys.stdout.write(
+                    f"\rIteration: {i + 1}/{round_num}, "
+                    f"Avg loop time: {average_loop_time:.4f} s, "
+                    f"Elapsed time: {elapsed_min:.2f} min, "
+                    f"Estimated time left: {time_left:.2f} min.                  "
+                )
+                sys.stdout.flush()
 
             valid_elements_history.append(valid_elements_count)
             if len(valid_elements_history) > 100:
                 valid_elements_history.pop(0)  # Remove the oldest value
             if sum(valid_elements_history) < stop_threshold:
                 round_num = i + 1
+                sys.stdout.write(
+                    f"\rIteration: {i + 1}/{round_num}, "
+                    f"Avg loop time: {average_loop_time:.4f} s, "
+                    f"Elapsed time: {elapsed_min:.2f} min, "
+                    f"Estimated time left: 0.00 min.                  "
+                )
+                sys.stdout.flush()
                 print(f"\nStopping early at iteration {i + 1} due to fewer gene pairs were removed.")
                 break
             

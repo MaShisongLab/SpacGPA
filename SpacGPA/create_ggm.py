@@ -164,7 +164,6 @@ class create_ggm:
             chunk_size=chunk_size,
             stop_threshold=stop_threshold)
         
-        print("Found", self.SigEdges.shape[0], "significant co-expressed gene pairs with partial correlation >=", cut_off_pcor)
         
         if FDR_control:
             self.fdr_control(permutation_fraction=1.0, FDR_threshold=self.FDR_threshold)
@@ -174,8 +173,24 @@ class create_ggm:
                 min_pcor_row = fdr_filtered.iloc[0]
                 min_pcor = min_pcor_row['Pcor']
                 if auto_adjust:
-                    self.adjust_cutoff(pcor_threshold=round(min_pcor, 3),
-                                        coex_cell_threshold=self.cut_off_coex_cell) 
+                    if min_pcor > 0.02:
+                        self.adjust_cutoff(
+                            pcor_threshold=round(min_pcor, 3),
+                            coex_cell_threshold=self.cut_off_coex_cell
+                        )
+                    else:
+                        target = 0.02
+                        if (fdr_summary['Pcor'] == target).any():
+                            fdr_at_target = fdr_summary.loc[fdr_summary['Pcor'] == target, 'FDR'].iloc[0]
+                        else:
+                            idx_closest = (fdr_summary['Pcor'] - target).abs().idxmin()
+                            fdr_at_target = fdr_summary.loc[idx_closest, 'FDR']
+                        print(f"FDR at pcor=0.02: {fdr_at_target:.3e}")
+                else:
+                    if min_pcor < cut_off_pcor:
+                        print(f"Note: Minimum Pcor with FDR <= {self.FDR_threshold} is {min_pcor:.3f}, which is lower than the current cutoff of {cut_off_pcor}. Consider adjusting the cutoff if needed.")
+        else:
+            print("Found", self.SigEdges.shape[0], "significant co-expressed gene pairs with partial correlation >=", cut_off_pcor,"without FDR control.")
                     
         if auto_find_modules:
             best_inflation, _ = find_best_inflation(self, 
@@ -189,6 +204,7 @@ class create_ggm:
                               max_iter=1000, tol=1e-6, pruning_threshold=1e-5,
                               min_module_size=10, topology_filtering=True, convert_to_symbols=False)         
         torch.cuda.empty_cache() 
+        
         print("\nTask completed. Resources released.")
     
 
