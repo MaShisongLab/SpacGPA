@@ -74,7 +74,7 @@ class create_ggm:
         FDR_threshold: optional, default as 0.05. The FDR threshold for filtering significant edges. only used when FDR_control is True.
         auto_adjust: optional, default as True. Whether to adjust the cutoff based on FDR results. only used when FDR_control is True.
         auto_find_modules: optional, default as False. Whether to automatically find modules based on the significant edges.
-                           Note: This parameter is only supported with methods='mcl-hub'.
+                           Note: This parameter is only supported with method='mcl-hub'.
         """
 
         self.matrix = None
@@ -199,7 +199,7 @@ class create_ggm:
                                                     expansion=2, add_self_loops='mean', max_iter=1000,
                                                     tol=1e-6, pruning_threshold=1e-5, run_mode=self.run_mode,
                                                     phase=3, show_plot=False)
-            self.find_modules(methods='mcl-hub', 
+            self.find_modules(method='mcl-hub', 
                               expansion=2, inflation=best_inflation, add_self_loops='mean', 
                               max_iter=1000, tol=1e-6, pruning_threshold=1e-5,
                               min_module_size=10, topology_filtering=True, convert_to_symbols=False)         
@@ -511,8 +511,8 @@ class create_ggm:
         print("Found", self.SigEdges.shape[0], "significant co-expressed gene pairs with partial correlation >=", cut_off_pcor)
 
 
-    def find_modules(self, methods='mcl-hub', 
-                    expansion=2, inflation=1.7, add_self_loops='mean', 
+    def find_modules(self, method='mcl-hub', 
+                    expansion=2, inflation=2, add_self_loops='mean', 
                     max_iter=1000, tol=1e-6, pruning_threshold=1e-5,
                     resolution=1.0, randomize=None, random_state=None,
                     scheme=7, threads=1,
@@ -522,7 +522,7 @@ class create_ggm:
         Find modules using the specified method.
 
         Parameters:
-        - methods: The method to use for module detection. Options are 'mcl-hub', 'louvain' or 'mcl'.
+        - method: The method to use for module detection. Options are 'mcl-hub', 'louvain' or 'mcl'.
         - mcl-hub parameters:
             - expansion: The mcl expansion parameter.
             - inflation: The mcl inflation parameter.
@@ -549,7 +549,7 @@ class create_ggm:
         - species: The species for gene ID conversion.
 
         """
-        if methods == 'mcl-hub':
+        if method == 'mcl-hub':
             print("\nFind modules using MCL-Hub...")
             print(f"Current Pcor: {self.cut_off_pcor}")
             print(f"Total significantly co-expressed gene pairs: {len(self.SigEdges)}")
@@ -564,7 +564,7 @@ class create_ggm:
                                 min_module_size=min_module_size, topology_filtering=topology_filtering,
                                 convert_to_symbols=convert_to_symbols, species=species, species_taxonomy_id=species_taxonomy_id)
             self.modules = module_df.copy()
-        elif methods == 'louvain':
+        elif method == 'louvain':
             print("\nFind modules using Louvain...")
             print(f"Current Pcor: {self.cut_off_pcor}")
             print(f"Total significantly co-expressed gene pairs: {len(self.SigEdges)}")
@@ -574,7 +574,7 @@ class create_ggm:
                                     min_module_size=min_module_size, topology_filtering=topology_filtering,
                                     convert_to_symbols=convert_to_symbols, species=species, species_taxonomy_id=species_taxonomy_id)
             self.modules = module_df.copy()                          
-        elif methods == 'mcl':
+        elif method == 'mcl':
             print("\nFind modules using MCL ...")
             print(f"Current Pcor: {self.cut_off_pcor}")
             print(f"Total significantly co-expressed gene pairs: {len(self.SigEdges)}")
