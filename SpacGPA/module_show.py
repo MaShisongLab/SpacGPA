@@ -119,44 +119,45 @@ def module_network_plot(
     nodes_edges: pd.DataFrame,
     nodes_anno: pd.DataFrame,
     show_nodes = 30,
-    highlight_anno: Optional[str] = None,
-    highlight_genes: Optional[List[str]] = None,
-    label_show: str = 'all',
     use_symbol: bool = True,
     
-    seed: int = 42,
+    line_style: str = '-',
+    line_width: float = 2.0,
+    line_alpha: float = 0.4,
+    line_color: str = 'lightskyblue',
+    
+    node_border_width: float = 0,
+    node_color: str = 'darkgray',
+    node_size: int = 50,
+    node_alpha: float = 0.5,
+
+    label_show: str = 'all',
+    label_color: str = 'black',
+    label_alpha: float = 1.0,
+    label_font_size: int = 25,
+    label_font_weight: str = 'normal',
+
+    highlight_anno: Optional[str] = None,
+    highlight_genes: Optional[List[str]] = None,
+    highlight_node_color: str = 'salmon',
+    highlight_node_size: Optional[int] = None,
+    highlight_node_alpha: Optional[float] = None,
+    highlight_label_color: str = 'red',
+    highlight_label_font_size: Optional[int] = None,
+    highlight_label_font_weight: Optional[str] = None,
+    highlight_label_alpha: Optional[float] = None,
+
+    seed: int = 1,
     weight_power: float = 1.0,
     layout: str = 'spring',
     layout_k: float = 1.0,
     layout_iterations: int = 50,
     margin: float = 0.1,
     
-    line_style: str = '-',
-    line_width: float = 1.0,
-    line_alpha: float = 0.4,
-    line_color: str = 'lightskyblue',
-    
-    node_border_width: float = 0,
-    node_color: str = 'darkgray',
-    node_size: int = 100,
-    node_alpha: float = 0.8,
-    highlight_node_color: str = 'salmon',
-    highlight_node_size: int = 100,
-    highlight_node_alpha: float = 0.8,
-    
-    label_color: str = 'black',
-    label_font_size: int = 10,
-    label_font_weight: str = 'normal',
-    label_alpha: float = 1.0,
-    highlight_label_color: str = 'black',
-    highlight_label_font_size: int = 10,
-    highlight_label_font_weight: str = 'bold',
-    highlight_label_alpha: float = 1.0,
-    
     plot: bool = True,
     save_plot_as: Optional[str] = None,
     save_network_as: Optional[str] = None
-) -> nx.Graph:
+):
     """
     Construct and optionally render a gene co-expression network.
 
@@ -319,6 +320,14 @@ def module_network_plot(
         )
         normal = [n for n, d in G.nodes(data=True) if not d['highlight']]
         highl = [n for n, d in G.nodes(data=True) if d['highlight']]
+
+        # inherit sizes/alphas for highlight when None
+        hi_node_size = highlight_node_size if highlight_node_size is not None else node_size
+        hi_node_alpha = highlight_node_alpha if highlight_node_alpha is not None else node_alpha
+        hi_label_font_size = highlight_label_font_size if highlight_label_font_size is not None else label_font_size
+        hi_label_font_weight = highlight_label_font_weight if highlight_label_font_weight is not None else label_font_weight
+        hi_label_alpha = highlight_label_alpha if highlight_label_alpha is not None else label_alpha
+
         nx.draw_networkx_nodes(
             G, pos, nodelist=normal, node_size=node_size,
             node_color=node_color, edgecolors='k',
@@ -326,10 +335,11 @@ def module_network_plot(
         )
         if highlight_set:
             nx.draw_networkx_nodes(
-                G, pos, nodelist=highl, node_size=highlight_node_size,
+                G, pos, nodelist=highl, node_size=hi_node_size,
                 node_color=highlight_node_color, edgecolors='k',
-                linewidths=node_border_width, alpha=highlight_node_alpha
+                linewidths=node_border_width, alpha=hi_node_alpha
             )
+
         labels_normal = {}
         labels_highlight = {}
         if label_show == 'all':
@@ -337,6 +347,7 @@ def module_network_plot(
             labels_highlight = {n: label_map[n] for n in highl}
         elif label_show == 'highlight':
             labels_highlight = {n: label_map[n] for n in highl}
+
         if labels_normal:
             nx.draw_networkx_labels(
                 G, pos, labels=labels_normal,
@@ -348,10 +359,10 @@ def module_network_plot(
         if labels_highlight:
             nx.draw_networkx_labels(
                 G, pos, labels=labels_highlight,
-                font_size=highlight_label_font_size,
-                font_weight=highlight_label_font_weight,
+                font_size=hi_label_font_size,
+                font_weight=hi_label_font_weight,
                 font_color=highlight_label_color,
-                alpha=highlight_label_alpha
+                alpha=hi_label_alpha
             )
         plt.margins(margin)
         plt.axis('off')
@@ -364,8 +375,6 @@ def module_network_plot(
             fig.savefig(save_plot_as, dpi=dpi, bbox_inches='tight')
         if plot:
             plt.show()
-
-    return G
 
 
 
