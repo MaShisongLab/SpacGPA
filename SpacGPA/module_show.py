@@ -155,6 +155,7 @@ def module_network_plot(
     margin: float = 0.1,
     
     plot: bool = True,
+    figsize: tuple = (8, 8),
     save_plot_as: Optional[str] = None,
     save_network_as: Optional[str] = None
 ):
@@ -237,6 +238,8 @@ def module_network_plot(
         Opacity of highlighted node labels.
     plot : bool, default=True
         If True, display the network plot.
+    figsize : tuple, default=(8, 8)
+        Figure size for the network plot.
     save_plot_as : str or None, default=None
         File path ending in .pdf or .png to save the rendered plot.
     save_network_as : str or None, default=None
@@ -313,7 +316,7 @@ def module_network_plot(
 
     # Draw & save
     if plot or save_plot_as:
-        fig = plt.figure(figsize=(8, 8))
+        fig = plt.figure(figsize=figsize)
         nx.draw_networkx_edges(
             G, pos, style=line_style, width=line_width,
             alpha=line_alpha, edge_color=line_color
@@ -386,17 +389,17 @@ def module_go_enrichment_plot(
     module_colors = None,
     go_per_module: int = 2,
     genes_per_go: int = 5,
-    bar_height: float = 0.6,
-    row_gap: float = 1.0,
-    text_size: int = 16,
-    label_fontsize: int = 20,
-    tick_fontsize: int = 16,
+    bar_height: float = 0.3,
+    row_gap: float = 0.5,
+    text_size: int = 8,
+    label_fontsize: int = 8,
+    tick_fontsize: int = 6,
     module_col_width: float = 0.05,
     module_col_alpha: float = 1.0,
     bar_alpha: float = 0.6,
     min_rows: int = 2,
     bottom_gap: float = 0.8,
-    fig_width: float = 7.0,
+    fig_width: float = 3.0,
     fig_height: float = None,
     save_plot_as: str = None,
 ) -> None:
@@ -418,15 +421,15 @@ def module_go_enrichment_plot(
         Maximum number of GO terms to display per module.
     genes_per_go : int, default 5
         Maximum number of genes to list under each GO term.
-    bar_height : float, default 0.5
+    bar_height : float, default 0.3
         Height of each horizontal bar.
-    row_gap : float, default 1.0
+    row_gap : float, default 0.5
         Vertical distance between consecutive GO rows.
-    text_size : int, default 12
+    text_size : int, default 8
         Font size for GO terms and gene lists.
-    label_fontsize : int, default 15
+    label_fontsize : int, default 8
         Font size for the X-axis label.
-    tick_fontsize : int, default 15
+    tick_fontsize : int, default 6
         Font size for X-axis ticks.
     module_col_width : float, default 0.05
         Fractional width of the left color column.
@@ -440,7 +443,7 @@ def module_go_enrichment_plot(
         Additional space below the lowest row, expressed as a
         multiple of *row_gap*.
     fig_width : float or None
-        Figure width in inches; defaults to 11 if None.
+        Figure width in inches; defaults to 3.0 if None.
     fig_height : float or None
         Figure height in inches; computed from data if None.
     save_plot_as : str or None
@@ -585,17 +588,17 @@ def module_mp_enrichment_plot(
     module_colors=None,
     mp_per_module: int = 2,
     genes_per_mp: int = 5,
-     bar_height: float = 0.6,
-    row_gap: float = 1.0,
-    text_size: int = 16,
-    label_fontsize: int = 20,
-    tick_fontsize: int = 16,
+    bar_height: float = 0.3,
+    row_gap: float = 0.5,
+    text_size: int = 8,
+    label_fontsize: int = 8,
+    tick_fontsize: int = 6,
     module_col_width: float = 0.05,
     module_col_alpha: float = 1.0,
     bar_alpha: float = 0.6,
     min_rows: int = 2,
     bottom_gap: float = 0.8,
-    fig_width: float = 7.0,
+    fig_width: float = 3.0,
     fig_height: float = None,
     save_plot_as: str = None,
 ) -> None:
@@ -637,7 +640,7 @@ def module_mp_enrichment_plot(
     bottom_gap : float
         Extra space below the lowest row (multiple of row_gap).
     fig_width : float or None
-        Figure width in inches; defaults to 11.
+        Figure width in inches; defaults to 3.0 if None.
     fig_height : float or None
         Figure height in inches; computed from data if None.
     save_plot_as : str or None
@@ -876,32 +879,46 @@ def module_similarity_plot(
     corr_mat = corr_df.values
 
     # compute Jaccard index matrix
-    if use_smooth:
-        anno_dict = {
-            m: (adata.obs.get(f"{m}_anno_smooth", adata.obs[f"{m}_anno"]) == m).astype(int).values
-            for m in modules
-        }
+    if heatmap_metric == 'jaccard': 
+        if not all(f"{m}_anno" in adata.obs.columns for m in modules):
+            raise ValueError("Module annotations missing in adata.obs")
+        if use_smooth:
+            anno_dict = {
+                m: (adata.obs.get(f"{m}_anno_smooth", adata.obs[f"{m}_anno"]) == m).astype(int).values
+                for m in modules
+            }
+        else:
+            anno_dict = {
+                m: (adata.obs[f"{m}_anno"] == m).astype(int).values
+                for m in modules
+            }
+        records = []
+        jacc_mat = pd.DataFrame(np.nan, index=modules, columns=modules)
+        for i, j in itertools.combinations(range(len(modules)), 2):
+            a = anno_dict[modules[i]]
+            b = anno_dict[modules[j]]
+            inter = np.logical_and(a, b).sum()
+            union = np.logical_or(a, b).sum()
+            jacc = inter / union if union > 0 else np.nan
+            records.append({
+                'module_a': modules[i],
+                'module_b': modules[j],
+                'correlation': float(corr_mat[i, j]),
+                'jaccard_index': jacc
+            })
+            jacc_mat.iat[i, j] = jacc_mat.iat[j, i] = jacc
+        result_df = pd.DataFrame(records)
     else:
-        anno_dict = {
-            m: (adata.obs[f"{m}_anno"] == m).astype(int).values
-            for m in modules
-        }
-    records = []
-    jacc_mat = pd.DataFrame(np.nan, index=modules, columns=modules)
-    for i, j in itertools.combinations(range(len(modules)), 2):
-        a = anno_dict[modules[i]]
-        b = anno_dict[modules[j]]
-        inter = np.logical_and(a, b).sum()
-        union = np.logical_or(a, b).sum()
-        jacc = inter / union if union > 0 else np.nan
-        records.append({
-            'module_a': modules[i],
-            'module_b': modules[j],
-            'correlation': float(corr_mat[i, j]),
-            'jaccard_index': jacc
-        })
-        jacc_mat.iat[i, j] = jacc_mat.iat[j, i] = jacc
-    result_df = pd.DataFrame(records)
+        records = []
+        for i, j in itertools.combinations(range(len(modules)), 2):
+            records.append({
+                'module_a': modules[i],
+                'module_b': modules[j],
+                'correlation': float(corr_mat[i, j]),
+                'jaccard_index': np.nan
+            })
+        result_df = pd.DataFrame(records)
+        jacc_mat = pd.DataFrame(np.nan, index=modules, columns=modules)
 
     # return summary if no plotting
     if not plot_heatmap and save_plot_as is None:
