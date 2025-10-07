@@ -851,12 +851,12 @@ def module_similarity_plot(
     ggm_keys = adata.uns.get('ggm_keys', {})
     if ggm_key not in ggm_keys:
         raise ValueError(f"{ggm_key} missing in adata.uns['ggm_keys']")
-    stat_key = ggm_keys[ggm_key]['module_stats']
+    info_key = ggm_keys[ggm_key]['module_info']
     expr_key = ggm_keys[ggm_key]['module_expression']
-    stats_df = adata.uns[stat_key]
+    info_df = adata.uns[info_key]
     module_expr = pd.DataFrame(
         adata.obsm[expr_key], index=adata.obs_names,
-        columns=stats_df['module_id']
+        columns=info_df['module_id'].unique()
     )
 
     # filter modules
@@ -1134,12 +1134,12 @@ def module_dot_plot(
     ordered_groups = list(grp_corr.index[leaves_list(Zg)])
 
     # 2) Cluster modules
-    stats_key = keys[ggm_key]['module_stats']
+    info_key = keys[ggm_key]['module_info']
     expr_key = keys[ggm_key]['module_expression']
-    stats_df = adata.uns[stats_key]
+    info_df = adata.uns[info_key]
     mod_expr = pd.DataFrame(
         adata.obsm[expr_key], index=adata.obs_names,
-        columns=stats_df['module_id']
+        columns=info_df['module_id'].unique()
     )
     modules = list(mod_expr.columns) if modules_used is None else [m for m in modules_used if m in mod_expr]
     if modules_excluded:
