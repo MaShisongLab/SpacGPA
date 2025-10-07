@@ -475,12 +475,13 @@ def module_go_enrichment_plot(
         subset = go_df[go_df["module"] == m].nsmallest(go_per_module, "padj")
         if subset.empty:
             continue
+        name_col = "symbol" if "symbol" in mod_df.columns else "gene"
         for _, rec in subset.iterrows():
             ens = [g for g in rec["genes_with_go_in_module"].split("/") if g]
             genes = (
                 mod_df[(mod_df["module"] == m) & (mod_df["gene"].isin(ens))]
                 .sort_values("rank")
-                .head(genes_per_go)["symbol"]
+                .head(genes_per_go)[name_col]
                 .tolist()
             )
             rows.append(
@@ -667,12 +668,13 @@ def module_mp_enrichment_plot(
         subset = mp_df[mp_df["module"] == m].nsmallest(mp_per_module, "padj")
         if subset.empty:
             continue
+        name_col = "symbol" if "symbol" in mod_df.columns else "gene"
         for _, rec in subset.iterrows():
             ens = [g for g in rec["genes_with_mp_in_module"].split("/") if g]
             genes = (
                 mod_df[(mod_df["module"] == m) & (mod_df["gene"].isin(ens))]
                 .sort_values("rank")
-                .head(genes_per_mp)["symbol"]
+                .head(genes_per_mp)[name_col]
                 .tolist()
             )
             rows.append({
