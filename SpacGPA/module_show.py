@@ -122,19 +122,19 @@ def module_network_plot(
     use_symbol: bool = True,
     
     line_style: str = '-',
-    line_width: float = 2.0,
+    line_width: float = 1.0,
     line_alpha: float = 0.4,
     line_color: str = 'lightskyblue',
     
     node_border_width: float = 0,
     node_color: str = 'darkgray',
-    node_size: int = 50,
+    node_size: int = 20,
     node_alpha: float = 0.5,
 
     label_show: str = 'all',
     label_color: str = 'black',
     label_alpha: float = 1.0,
-    label_font_size: int = 25,
+    label_font_size: int = 13,
     label_font_weight: str = 'normal',
 
     highlight_anno: Optional[str] = None,
@@ -155,7 +155,7 @@ def module_network_plot(
     margin: float = 0.1,
     
     plot: bool = True,
-    figsize: tuple = (8, 8),
+    figsize: tuple = (4, 4),
     save_plot_as: Optional[str] = None,
     save_network_as: Optional[str] = None
 ):
