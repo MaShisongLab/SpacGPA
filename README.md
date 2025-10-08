@@ -27,7 +27,7 @@ SpacGPA is described in the preprint “[SpacGPA: annotating spatial transcripto
 
 2) Install SpacGPA  
 **cd SpacGPA-main**  
-**pip install -e .**  
+**pip install .**  
 
 ### Option B — Create a conda environment
 
@@ -37,7 +37,7 @@ SpacGPA is described in the preprint “[SpacGPA: annotating spatial transcripto
 **conda activate SpacGPA**  
 
 2) Install SpacGPA  
-**pip install -e .**  
+**pip install .**  
 **conda deactivate**  
 
 **Note:** If you prefer a different CUDA/toolkit, edit the PyTorch lines in environment.yml
