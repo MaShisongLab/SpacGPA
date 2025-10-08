@@ -116,7 +116,7 @@ def ensure_gene_symbol_table(species, species_taxonomy_id, gene_symbl_file) -> d
     with gzip.open(gene_symbl_file, "wt", encoding="utf-8") as gz:
         for gid, sym in mapping.items():
             gz.write(f"{gid}\t{sym}\n")
-    print(f"[MyGene] Saved mapping to: {gene_symbl_file}  (n={len(mapping)})")
+    print(f"[MyGene] Build Ensembl→symbol mapping file for species='{species}' successfully")
 
     return mapping
 
@@ -600,4 +600,4 @@ def get_GO_annoinfo(species_name=None,
         for sym, go_term in sorted(symbol_annotation_pairs_final):
             f.write(f"{sym}\t{go_term}\n")
     
-    print(f"Files written:\n  {out_annotation_file}\n  {out_gene_symbl_file}")
+    print(f"[MyGene] Saved GO annotation file for species='{species_name}' successfully")
