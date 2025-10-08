@@ -638,9 +638,9 @@ class create_ggm:
 
     def module_network_plot(
         self,
-        module_id: str | None = None,
-        nodes_edges: pd.DataFrame | None = None,
-        nodes_anno: pd.DataFrame | None = None,
+        module_id = None,
+        nodes_edges = None,
+        nodes_anno = None,
         **kwargs
     ):
         return plot_network(self=self, module_id=module_id, nodes_edges=nodes_edges, nodes_anno=nodes_anno, **kwargs)

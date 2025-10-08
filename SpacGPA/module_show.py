@@ -116,12 +116,12 @@ def get_module_anno(self, module_id, add_enrich_info=True, top_n=None, term_id=N
 
 # module_network_plot
 def module_network_plot(
-    self: Optional[object] = None,
-    module_id: Optional[str] = None,
-    nodes_edges: pd.DataFrame = None,
-    nodes_anno: pd.DataFrame = None,
+    self = None,
+    module_id = None,
+    nodes_edges = None,
+    nodes_anno = None,
     show_nodes = 30,
-    use_symbol: bool = True,
+    use_symbol = True,
     
     line_style: str = '-',
     line_width: float = 1.0,
