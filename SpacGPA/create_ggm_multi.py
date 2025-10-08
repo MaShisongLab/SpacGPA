@@ -11,6 +11,9 @@ from .calculate_pcors import set_selects, estimate_rounds
 from .find_modules import run_mcl, run_louvain, run_mcl_original
 from .module_show import get_module_edges as get_edges
 from .module_show import get_module_anno as get_anno
+from .module_show import module_network_plot as plot_network
+from .module_show import module_go_enrichment_plot as plot_go
+from .module_show import module_mp_enrichment_plot as plot_mp
 from .enrich_analysis import go_enrichment_analysis as run_go
 from .enrich_analysis import mp_enrichment_analysis as run_mp
 from .par_optimization import find_best_inflation
@@ -677,5 +680,20 @@ class create_ggm_multi:
                pvalue_cutoff=0.05
                 ):
         run_mp(self, species, padjust_method, pvalue_cutoff)
+
+    def module_network_plot(
+        self,
+        module_id: str | None = None,
+        nodes_edges: pd.DataFrame | None = None,
+        nodes_anno: pd.DataFrame | None = None,
+        **kwargs
+    ):
+        return plot_network(self=self, module_id=module_id, nodes_edges=nodes_edges, nodes_anno=nodes_anno, **kwargs)
+
+    def module_go_enrichment_plot(self, **kwargs) -> None:
+        return plot_go(self, **kwargs)
+
+    def module_mp_enrichment_plot(self, **kwargs) -> None:
+        return plot_mp(self, **kwargs)
     
     

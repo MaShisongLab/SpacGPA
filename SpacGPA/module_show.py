@@ -116,8 +116,10 @@ def get_module_anno(self, module_id, add_enrich_info=True, top_n=None, term_id=N
 
 # module_network_plot
 def module_network_plot(
-    nodes_edges: pd.DataFrame,
-    nodes_anno: pd.DataFrame,
+    self: Optional[object] = None,
+    module_id: Optional[str] = None,
+    nodes_edges: pd.DataFrame = None,
+    nodes_anno: pd.DataFrame = None,
     show_nodes = 30,
     use_symbol: bool = True,
     
@@ -169,6 +171,10 @@ def module_network_plot(
 
     Parameters
     ----------
+    self : object or None, default=None
+        If nodes_edges and nodes_anno are not provided, self must be a GGM object
+    module_id : str or None, default=None
+        If nodes_edges and nodes_anno are not provided, module_id must be given to
     nodes_edges : pd.DataFrame
         DataFrame with columns ['GeneA', 'GeneB', 'Pcor'], defining edges and base weights.
     nodes_anno : pd.DataFrame
@@ -250,6 +256,16 @@ def module_network_plot(
     networkx.Graph
         The constructed co-expression network graph.
     """
+    if nodes_edges is None or nodes_anno is None:
+        if self is None or module_id is None:
+            raise ValueError(
+                "Provide both nodes_edges & nodes_anno, or provide self & module_id to auto-fetch."
+            )
+        if nodes_edges is None:
+            nodes_edges = self.get_module_edges(module_id)
+        if nodes_anno is None:
+            nodes_anno = self.get_module_anno(module_id)
+
     # Prepare node labels
     has_symbol = use_symbol and 'symbol' in nodes_anno.columns
     label_map = {
@@ -265,6 +281,7 @@ def module_network_plot(
         genes = nodes_anno['gene'].tolist()
 
     # Determine highlight set
+        # Determine highlight set
     if highlight_genes is not None:
         symbol_to_gene = {}
         if has_symbol:
@@ -280,10 +297,30 @@ def module_network_plot(
                 highlight_set.add(g)
     else:
         highlight_set = set()
-        if highlight_anno and highlight_anno in nodes_anno.columns:
-            highlight_set = set(
-                nodes_anno.loc[nodes_anno[highlight_anno].notnull(), 'gene']
-            )
+        if highlight_anno:
+            if highlight_anno in nodes_anno.columns:
+                # column name: highlight non-null entries in that column
+                mask = nodes_anno[highlight_anno].notnull()
+                highlight_set = set(nodes_anno.loc[mask, 'gene'])
+            else:
+                # treat as a value: it must appear in exactly one column
+                cols_with_value = [
+                    col for col in nodes_anno.columns
+                    if (nodes_anno[col] == highlight_anno).any()
+                ]
+                if len(cols_with_value) == 1:
+                    col = cols_with_value[0]
+                    mask = nodes_anno[col] == highlight_anno
+                    highlight_set = set(nodes_anno.loc[mask, 'gene'])
+                elif len(cols_with_value) == 0:
+                    raise ValueError(
+                        f"found no entries matching highlight anno info '{highlight_anno}'"
+                    )
+                else:
+                    raise ValueError(
+                        f"highlight anno info '{highlight_anno}' appears in multiple columns: "
+                        f"{cols_with_value}. Please disambiguate."
+                    )
 
     # Build graph
     G = nx.Graph()
@@ -382,10 +419,10 @@ def module_network_plot(
 
 
 def module_go_enrichment_plot(
-    ggm,
+    self,
     *,
     top_n_modules: int = 5,
-    selected_modules = None,
+    shown_modules = None,
     module_colors = None,
     go_per_module: int = 2,
     genes_per_go: int = 5,
@@ -411,8 +448,8 @@ def module_go_enrichment_plot(
     ggm : object
         Object containing attributes: 'go_enrichment' (GO results) and modules' (gene co-expression modules).
     top_n_modules : int, default 5
-        Number of modules to draw if *selected_modules* is None.
-    selected_modules : list[str] | None, default None
+        Number of modules to draw if shown_modules is None.
+    shown_modules : list[str] | None, default None
         Explicit list of module IDs to plot. If None, the first
         *top_n_modules* (sorted numerically by ID) are used.
     module_colors : dict[str, str] | None, default None
@@ -454,23 +491,27 @@ def module_go_enrichment_plot(
         Opens a matplotlib figure window.
     """
      # prepare data
-    go_df = ggm.go_enrichment.rename(
+    go_df = self.go_enrichment.rename(
         columns={"module_id": "module", "go_term": "Description", "pValueAdjusted": "padj"}
     ).copy()
-    mod_df = ggm.modules.rename(columns={"module_id": "module"}).copy()
+    mod_df = self.modules.rename(columns={"module_id": "module"}).copy()
 
     # determine modules
-    if selected_modules:
-        module_list = [m for m in selected_modules if m in go_df["module"].unique()]
+    if shown_modules:
+        module_list = [m for m in reversed(shown_modules) if m in go_df["module"].unique()]
     else:
-        module_list = sorted(go_df["module"].unique(), key=lambda x: int(x[1:]))[:top_n_modules]
+        ordered = sorted(go_df["module"].unique(), key=lambda x: int(x[1:]))
+        module_list = ordered[:top_n_modules][::-1]
 
     # assign colors
+    cmap = plt.get_cmap("tab20")
+
     if module_colors is None:
-        cmap = plt.get_cmap("tab20")
         module_colors = {m: cmap(i % cmap.N) for i, m in enumerate(module_list)}
-    for i, m in enumerate(module_list):
-        module_colors.setdefault(m, plt.get_cmap("tab20")(i % 20))
+    else:
+        missing = [m for m in module_list if m not in module_colors]
+        if missing:
+            raise ValueError(f"missing colors mappings for modules: {missing}")
 
     # gather rows
     rows = []
@@ -581,10 +622,10 @@ def module_go_enrichment_plot(
 
 # module_mp_enrichment_plot
 def module_mp_enrichment_plot(
-    ggm,
+    self,
     *,
     top_n_modules: int = 5,
-    selected_modules=None,
+    shown_modules=None,
     module_colors=None,
     mp_per_module: int = 2,
     genes_per_mp: int = 5,
@@ -610,8 +651,8 @@ def module_mp_enrichment_plot(
     ggm : object
         Must have attributes `mp_enrichment` and `modules` (both DataFrames).
     top_n_modules : int
-        Number of modules to draw if selected_modules is None.
-    selected_modules : list or None
+        Number of modules to draw if shown_modules is None.
+    shown_modules : list or None
         Explicit list of module IDs to plot.
     module_colors : dict or None
         Mapping module -> color; generated if None.
@@ -647,23 +688,27 @@ def module_mp_enrichment_plot(
         Path ending in .pdf or .png to save the figure.
     """
     # prepare data
-    mp_df = ggm.mp_enrichment.rename(
+    mp_df = self.mp_enrichment.rename(
         columns={"module_id": "module", "mp_term": "Description", "pValueAdjusted": "padj"}
     ).copy()
-    mod_df = ggm.modules.rename(columns={"module_id": "module"}).copy()
+    mod_df = self.modules.rename(columns={"module_id": "module"}).copy()
 
-    # select modules
-    if selected_modules:
-        module_list = [m for m in selected_modules if m in mp_df["module"].unique()]
+    # determine modules
+    if shown_modules:
+        module_list = [m for m in reversed(shown_modules) if m in mp_df["module"].unique()]
     else:
-        module_list = sorted(mp_df["module"].unique(), key=lambda x: int(x[1:]))[:top_n_modules]
+        ordered = sorted(mp_df["module"].unique(), key=lambda x: int(x[1:]))
+        module_list = ordered[:top_n_modules][::-1]
 
     # assign colors
+    cmap = plt.get_cmap("tab20")
+
     if module_colors is None:
-        cmap = plt.get_cmap("tab20")
         module_colors = {m: cmap(i % cmap.N) for i, m in enumerate(module_list)}
-    for i, m in enumerate(module_list):
-        module_colors.setdefault(m, plt.get_cmap("tab20")(i % 20))
+    else:
+        missing = [m for m in module_list if m not in module_colors]
+        if missing:
+            raise ValueError(f"missing colors mappings for modules: {missing}")
 
     # gather rows
     rows = []
